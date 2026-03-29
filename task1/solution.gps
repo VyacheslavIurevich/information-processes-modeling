@@ -1,0 +1,114 @@
+*************************************************************************
+* --- CONSTANTS ---
+*************************************************************************
+* Server Status Constants
+WORKING                 EQU  0         ; Server is working
+FAILED                  EQU  1         ; Server is down/under repair
+
+* Experiment target values
+MAX_AVG_FAILED_SERVERS  EQU  2.0       ; Threshold for maximum allowed failed servers
+INIT_STAFF_COUNT        EQU  1         ; Initial staff count to start the search
+INIT_AVGF_BUFFER        EQU  100.0     ; Buffer value to enter the WHILE loop
+YEAR_HOURS              EQU  8760      ; Simulation duration (1 year in hours)
+
+* Random number generator settings
+EXP_STREAM              EQU  1         ; Random number stream ID
+EXP_OFFSET              EQU  0         ; Distribution offset
+
+* Mean time between attacks for servers
+T_ATTACK1               EQU  14
+T_ATTACK2               EQU  26
+T_ATTACK3               EQU  32
+T_ATTACK4               EQU  64
+T_ATTACK5               EQU  70
+
+* Absolute probabilities
+P_SAFE_TOTAL            EQU  .500      ; 50% of attacks are blocked by security
+P_PARTIAL_TOTAL         EQU  .200      ; 20% of total attacks lead to partial failure
+
+* Adjusted probability for TRANSFER
+P_PARTIAL_ADJUSTED      EQU  (P_PARTIAL_TOTAL / (1.0 - P_SAFE_TOTAL))
+
+* Repair time parameters
+REPAIR_PARTIAL_MEAN     EQU  8         
+REPAIR_PARTIAL_RANGE    EQU  4         ; 8 +/- 4 hours
+REPAIR_FULL_MEAN        EQU  16        
+REPAIR_FULL_RANGE       EQU  8         ; 16 +/- 8 hours
+
+*************************************************************************
+* --- EXPERIMENT PROCEDURE ---
+*************************************************************************
+EXPERIMENT FindMinStaff()
+BEGIN
+    TEMPORARY Staff; 
+    TEMPORARY AvgF;
+
+    Staff = INIT_STAFF_COUNT; 
+    AvgF = INIT_AVGF_BUFFER; 
+    
+    WHILE (AvgF >= MAX_AVG_FAILED_SERVERS) DO
+    BEGIN
+        DoCommand("CLEAR");
+        DoCommand(Catenate("PROG_CAP STORAGE ", String(Staff)));
+        DoCommand("START 1,NP");
+        
+        AvgF = Q$TotalFailed; 
+        
+        IF (AvgF >= MAX_AVG_FAILED_SERVERS) THEN
+            Staff = Staff + 1;
+    END;
+    
+    DoCommand(Catenate("SAVEVALUE Result,", String(Staff)));
+    DoCommand("SHOW X$Result");
+END;
+
+*************************************************************************
+* --- MODEL LOGIC (Blocks) ---
+*************************************************************************
+
+* Attack Generators for 5 independent servers
+GENERATE (Exponential(EXP_STREAM,EXP_OFFSET,T_ATTACK1))
+ASSIGN 1,1                                  ; Server ID to P1
+TRANSFER ,CHECK
+
+GENERATE (Exponential(EXP_STREAM,EXP_OFFSET,T_ATTACK2))
+ASSIGN 1,2
+TRANSFER ,CHECK
+
+GENERATE (Exponential(EXP_STREAM,EXP_OFFSET,T_ATTACK3))
+ASSIGN 1,3
+TRANSFER ,CHECK
+
+GENERATE (Exponential(EXP_STREAM,EXP_OFFSET,T_ATTACK4))
+ASSIGN 1,4
+TRANSFER ,CHECK
+
+GENERATE (Exponential(EXP_STREAM,EXP_OFFSET,T_ATTACK5))
+ASSIGN 1,5
+TRANSFER ,CHECK
+
+* Attack Processing Logic
+CHECK    TEST E X*1,WORKING,SAFE          ; Only proceed if server is WORKING
+         TRANSFER P_SAFE_TOTAL,,SAFE      ; Check if security blocks the attack
+         
+         SAVEVALUE *1,FAILED              ; Set specific server status to FAILED
+         QUEUE TotalFailed                ; Enter the failure queue
+         
+         TRANSFER P_PARTIAL_ADJUSTED,FULL,PARTIAL
+
+PARTIAL  ENTER PROG_CAP
+         ADVANCE REPAIR_PARTIAL_MEAN,REPAIR_PARTIAL_RANGE            
+         LEAVE PROG_CAP
+         TRANSFER ,DONE
+
+FULL     ENTER PROG_CAP
+         ADVANCE REPAIR_FULL_MEAN,REPAIR_FULL_RANGE           
+         LEAVE PROG_CAP
+
+DONE     SAVEVALUE *1,WORKING             ; Repair complete: set status to WORKING
+         DEPART TotalFailed
+SAFE     TERMINATE
+
+* Simulation Control
+GENERATE YEAR_HOURS
+TERMINATE 1
