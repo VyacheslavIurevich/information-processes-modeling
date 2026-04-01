@@ -7,7 +7,7 @@ FAILED                  EQU  1         ; Server is down/under repair
 
 * Experiment target values
 MAX_AVG_FAILED_SERVERS  EQU  2.0       ; Threshold for maximum allowed failed servers
-INIT_STAFF_COUNT        EQU  1         ; Initial staff count to start the search
+INIT_STAFF_COUNT        EQU  0         ; Initial staff count to start the search
 INIT_AVGF_BUFFER        EQU  100.0     ; Buffer value to enter the WHILE loop
 YEAR_HOURS              EQU  8760      ; Simulation duration (1 year in hours)
 
@@ -48,14 +48,11 @@ BEGIN
     
     WHILE (AvgF >= MAX_AVG_FAILED_SERVERS) DO
     BEGIN
+        Staff = Staff + 1;
         DoCommand("CLEAR");
         DoCommand(Catenate("PROG_CAP STORAGE ", String(Staff)));
         DoCommand("START 1,NP");
-        
-        AvgF = Q$TotalFailed; 
-        
-        IF (AvgF >= MAX_AVG_FAILED_SERVERS) THEN
-            Staff = Staff + 1;
+        AvgF = Q$TotalFailed;
     END;
     
     DoCommand(Catenate("SAVEVALUE Result,", String(Staff)));
@@ -94,7 +91,7 @@ CHECK    TEST E X*1,WORKING,SAFE          ; Only proceed if server is WORKING
          SAVEVALUE *1,FAILED              ; Set specific server status to FAILED
          QUEUE TotalFailed                ; Enter the failure queue
          
-         TRANSFER P_PARTIAL_ADJUSTED,FULL,PARTIAL
+         TRANSFER P_PARTIAL_ADJUSTED,PARTIAL,FULL
 
 PARTIAL  ENTER PROG_CAP
          ADVANCE REPAIR_PARTIAL_MEAN,REPAIR_PARTIAL_RANGE            
