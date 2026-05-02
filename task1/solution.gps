@@ -2,18 +2,18 @@
 * --- CONSTANTS ---
 *************************************************************************
 * Server Status Constants
-WORKING                 EQU  0         ; Server is working
-FAILED                  EQU  1         ; Server is down/under repair
+WORKING                 EQU  0          ; Server is working
+FAILED                  EQU  1          ; Server is down/under repair
 
 * Experiment target values
-MAX_AVG_FAILED_SERVERS  EQU  2.0       ; Threshold for maximum allowed failed servers
-INIT_STAFF_COUNT        EQU  0         ; Initial staff count to start the search
-INIT_AVGF_BUFFER        EQU  100.0     ; Buffer value to enter the WHILE loop
-YEAR_HOURS              EQU  8760      ; Simulation duration (1 year in hours)
+MAX_AVG_FAILED_SERVERS  EQU  2.0        ; Threshold for maximum allowed failed servers
+INIT_STAFF_COUNT        EQU  0          ; Initial staff count to start the search
+INIT_AVGF_BUFFER        EQU  100.0      ; Buffer value to enter the WHILE loop
+YEAR_HOURS              EQU  8760       ; Simulation duration (1 year in hours)
 
 * Random number generator settings
-EXP_STREAM              EQU  1         ; Random number stream ID
-EXP_OFFSET              EQU  0         ; Distribution offset
+EXP_STREAM              EQU  1          ; Random number stream ID
+EXP_OFFSET              EQU  0          ; Distribution offset
 
 * Mean time between attacks for servers
 T_ATTACK1               EQU  14
@@ -23,17 +23,23 @@ T_ATTACK4               EQU  64
 T_ATTACK5               EQU  70
 
 * Absolute probabilities
-P_SAFE_TOTAL            EQU  .500      ; 50% of attacks are blocked by security
-P_PARTIAL_TOTAL         EQU  .200      ; 20% of total attacks lead to partial failure
+P_SAFE_TOTAL            EQU  .500       ; 50% of attacks are blocked by security
+P_PARTIAL_TOTAL         EQU  .200       ; 20% of total attacks lead to partial failure
 
 * Adjusted probability for TRANSFER
 P_PARTIAL_ADJUSTED      EQU  (P_PARTIAL_TOTAL / (1.0 - P_SAFE_TOTAL))
 
 * Repair time parameters
-REPAIR_PARTIAL_MEAN     EQU  8         
-REPAIR_PARTIAL_RANGE    EQU  4         ; 8 +/- 4 hours
-REPAIR_FULL_MEAN        EQU  16        
-REPAIR_FULL_RANGE       EQU  8         ; 16 +/- 8 hours
+REPAIR_PARTIAL_MEAN     EQU  16         
+REPAIR_PARTIAL_RANGE    EQU  4          ; 16 +/- 4 hours
+REPAIR_FULL_MEAN        EQU  32         
+REPAIR_FULL_RANGE       EQU  8          ; 32 +/- 8 hours
+
+*************************************************************************
+* --- VARIABLES ---
+*************************************************************************
+* Calculation: (Total downtime hours) / (Current clock) = Avg failed servers
+AVG_FAILED_VAR  VARIABLE  X$Summ/AC1
 
 *************************************************************************
 * --- EXPERIMENT PROCEDURE ---
@@ -52,11 +58,14 @@ BEGIN
         DoCommand("CLEAR");
         DoCommand(Catenate("PROG_CAP STORAGE ", String(Staff)));
         DoCommand("START 1,NP");
-        AvgF = Q$TotalFailed;
+        
+        AvgF = V$AVG_FAILED_VAR;
+        
+        DoCommand(Catenate("SAVEVALUE Result,", String(Staff)));
+        DoCommand(Catenate("SAVEVALUE LastAvg,", String(AvgF)));
+        DoCommand("SHOW X$Result");
+        DoCommand("SHOW X$LastAvg");
     END;
-    
-    DoCommand(Catenate("SAVEVALUE Result,", String(Staff)));
-    DoCommand("SHOW X$Result");
 END;
 
 *************************************************************************
@@ -85,27 +94,28 @@ ASSIGN 1,5
 TRANSFER ,CHECK
 
 * Attack Processing Logic
-CHECK    TEST E X*1,WORKING,SAFE          ; Only proceed if server is WORKING
-         TRANSFER P_SAFE_TOTAL,,SAFE      ; Check if security blocks the attack
+CHECK    TEST E X*1,WORKING,SAFE            ; Only proceed if server is WORKING
+         TRANSFER P_SAFE_TOTAL,,SAFE        ; Check if security blocks the attack
          
-         SAVEVALUE *1,FAILED              ; Set specific server status to FAILED
-         QUEUE TotalFailed                ; Enter the failure queue
+         SAVEVALUE *1,FAILED                ; Set specific server status to FAILED
+         ASSIGN 2,AC1                       ; Store failure start time in P2
          
          TRANSFER P_PARTIAL_ADJUSTED,PARTIAL,FULL
 
-PARTIAL  ENTER PROG_CAP
+PARTIAL  ENTER PROG_CAP                     ; Request programmer
          ADVANCE REPAIR_PARTIAL_MEAN,REPAIR_PARTIAL_RANGE            
-         LEAVE PROG_CAP
+         LEAVE PROG_CAP                     ; Release programmer
          TRANSFER ,DONE
 
-FULL     ENTER PROG_CAP
+FULL     ENTER PROG_CAP                     ; Request programmer
          ADVANCE REPAIR_FULL_MEAN,REPAIR_FULL_RANGE           
-         LEAVE PROG_CAP
+         LEAVE PROG_CAP                     ; Release programmer
 
-DONE     SAVEVALUE *1,WORKING             ; Repair complete: set status to WORKING
-         DEPART TotalFailed
+DONE     SAVEVALUE Summ+,(AC1-P2)           ; Integrate downtime: (Current - Start)
+         SAVEVALUE *1,WORKING               ; Repair complete: set status to WORKING
+
 SAFE     TERMINATE
 
 * Simulation Control
-GENERATE YEAR_HOURS
+GENERATE YEAR_HOURS                         ; Run for 1 year
 TERMINATE 1
