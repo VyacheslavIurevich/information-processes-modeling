@@ -1,0 +1,8 @@
+task2/server/.settings
+task2/server/out
+task2/server/results*
+task2/server/src/Makefile
+task2/server/src/server
+task2/server/src/server_dbg
+task2/server/*.anf
+task2/server/src/RepairMessage_m*
