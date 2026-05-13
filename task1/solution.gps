@@ -63,9 +63,11 @@ BEGIN
         
         DoCommand(Catenate("SAVEVALUE Result,", String(Staff)));
         DoCommand(Catenate("SAVEVALUE LastAvg,", String(AvgF)));
-        DoCommand("SHOW X$Result");
-        DoCommand("SHOW X$LastAvg");
+        OutString = Polycatenate("Current number of programmers: ", X$Result, "; Average number of broken servers: ", X$LastAvg);
+        DoCommand("SHOW OutString");
     END;
+    OutString = Polycatenate("Required number of programmers: ", X$Result, "; Average number of broken servers: ", X$LastAvg);
+    DoCommand("SHOW OutString");
 END;
 
 *************************************************************************
